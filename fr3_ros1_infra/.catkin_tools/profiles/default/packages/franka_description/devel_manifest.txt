@@ -1,0 +1,4 @@
+franka_ros/franka_description
+/home/alan/fr3_ros1_infra/devel/.private/franka_description/share/franka_description/cmake/franka_descriptionConfig.cmake /home/alan/fr3_ros1_infra/devel/share/franka_description/cmake/franka_descriptionConfig.cmake
+/home/alan/fr3_ros1_infra/devel/.private/franka_description/share/franka_description/cmake/franka_descriptionConfig-version.cmake /home/alan/fr3_ros1_infra/devel/share/franka_description/cmake/franka_descriptionConfig-version.cmake
+/home/alan/fr3_ros1_infra/devel/.private/franka_description/lib/pkgconfig/franka_description.pc /home/alan/fr3_ros1_infra/devel/lib/pkgconfig/franka_description.pc

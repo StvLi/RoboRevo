@@ -1,0 +1,38 @@
+<?xml version="1.0" ?>
+<launch>
+  <!-- 机器人参数 -->
+  <arg name="robot" default="fr3" doc="choose your robot. Possible values: [panda, fr3]"/>
+  <arg name="arm_id" default="$(arg robot)" />
+  <arg name="robot_ip" default="172.16.0.2" doc="IP address of the Franka robot"/>
+  <arg name="load_gripper" default="false" doc="whether to load the gripper"/>
+  
+  <!-- Inference接口参数 -->
+  <arg name="use_mock" default="false" doc="use mock mode for inference client (no real server)"/>
+  <arg name="debug" default="true" doc="enable debug logging"/>
+  
+  <!-- 启动franka_control -->
+  <include file="$(find franka_control)/launch/franka_control.launch" pass_all_args="true"/>
+  
+  <!-- 加载控制器配置 -->
+  <rosparam command="load" file="$(find franka_example_controllers)/config/franka_example_controllers.yaml" subst_value="true" />
+  
+  <!-- 启动状态控制器 (franka_control.launch已启动，可通过launch_state_controller控制是否重复启动) -->
+  <arg name="launch_state_controller" default="false" doc="whether to launch state controller (already launched by franka_control.launch)"/>
+  <node if="$(arg launch_state_controller)" name="state_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="franka_state_controller"/>
+  
+  <!-- 启动笛卡尔阻抗控制器 -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="cartesian_impedance_example_controller"/>
+  
+  <!-- 启动RViz可视化 -->
+  <node pkg="rviz" type="rviz" output="screen" name="rviz" args="-d $(find franka_example_controllers)/launch/rviz/franka_description_with_marker.rviz -f $(arg arm_id)_link0 --splash-screen $(find franka_visualization)/splash.png"/>
+  
+  <!-- 启动rqt_reconfigure动态参数配置 -->
+  <node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" required="false" />
+  
+  <!-- 启动InferenceFR3Interface节点，替代interactive_marker -->
+  <node name="inference_fr3_interface" pkg="teleop_infer_infra" type="inference_fr3_interface.py" output="screen" required="true">
+    <param name="use_mock" value="$(arg use_mock)" />
+    <param name="debug" value="$(arg debug)" />
+  </node>
+  
+</launch>
