@@ -326,7 +326,8 @@ class InferenceClient:
             all_actions = np.array(result["data"]["unnormalized_actions"])
             
             # Extract action sequence (first sample, first exec_steps)
-            action_sequence = all_actions[0, :self.exec_steps, :]
+            # action_sequence = all_actions[0, :self.exec_steps, :]
+            action_sequence = all_actions[0, :, :]
             
             # 7. Update action buffer
             with self.data_lock:

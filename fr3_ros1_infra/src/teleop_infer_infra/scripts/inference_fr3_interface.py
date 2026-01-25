@@ -16,11 +16,11 @@ workspace_root = os.path.join(os.path.dirname(__file__), '../../..')
 # 1. 添加teleop_infer_infra包路径
 sys.path.append(os.path.join(workspace_root, 'src/teleop_infer_infra/src'))
 # 2. 添加simplified_franka_env路径（在tmp/reference_scripts/dated_teleop目录中）
-sys.path.append(os.path.join(workspace_root, 'tmp/reference_scripts/dated_teleop'))
+# sys.path.append(os.path.join(workspace_root, 'tmp/reference_scripts/dated_teleop'))
 
 # 导入InferenceClient和SimplifiedFrankaEnv
 from teleop_infer_infra.inference import InferenceClient
-from simplified_franka_env import SimplifiedFrankaEnv
+from teleop_infer_infra.simplified_franka_env import SimplifiedFrankaEnv
 
 class InferenceFR3Interface:
     def __init__(self, use_mock: bool = False, debug: bool = True):
@@ -36,7 +36,7 @@ class InferenceFR3Interface:
         # 创建agent和env实例
         # 使用InferenceClient作为agent，替代Haption6DExpert
         self.agent = InferenceClient(debug=debug, use_mock=use_mock)
-        self.env = SimplifiedFrankaEnv(debug=debug)
+        self.env = SimplifiedFrankaEnv(ref_frame='ee', debug=debug)
         
         # 重置环境
         self.obs = self.env.reset()
@@ -46,7 +46,7 @@ class InferenceFR3Interface:
         self.is_first_step = True
         
         # 设置时钟回调频率 (10Hz)
-        self.rate = rospy.Rate(10)  # 10Hz
+        self.rate = rospy.Rate(30)  # 10Hz
         
         # 设置图像源（模拟）
         self._setup_image_source()
@@ -135,7 +135,6 @@ class InferenceFR3Interface:
         while not rospy.is_shutdown():
             # 调用时钟回调函数
             self.timer_callback()
-            
             # 保持循环频率
             self.rate.sleep()
 

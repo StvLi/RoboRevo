@@ -8,7 +8,7 @@
 import rospy
 import numpy as np
 from haption6d_expert import Haption6DExpert
-from simplified_franka_env import SimplifiedFrankaEnv
+from teleop_infer_infra.scripts.simplified_franka_env import SimplifiedFrankaEnv
 
 class ExpEnvInteract:
     def __init__(self):
