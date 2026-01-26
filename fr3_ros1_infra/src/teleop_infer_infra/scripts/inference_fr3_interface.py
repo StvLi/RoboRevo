@@ -94,6 +94,10 @@ class InferenceFR3Interface:
             
             # 使用动作和按钮状态执行env的step，获取新的观测值
             self.obs, reward, done, info = self.env.step(action, buttons)
+
+            # <<<临时加入的shit>>>
+            if buttons[2]:
+                self.env.reset()
             
             # 更新统计信息
             self.step_count += 1

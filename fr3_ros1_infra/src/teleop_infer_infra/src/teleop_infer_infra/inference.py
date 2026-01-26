@@ -247,6 +247,7 @@ class InferenceClient:
             # Check if buffer is exhausted
             if self.buffer_index >= len(self.action_buffer):
                 # Buffer exhausted, go back to idle
+                self.current_buttons[2] = True # 手动重置
                 self.fsm = "idle"
                 if self.debug:
                     rospy.logdebug("FSM: execution -> idle (buffer exhausted)")
@@ -328,7 +329,7 @@ class InferenceClient:
             # Extract action sequence (first sample, first exec_steps)
             # action_sequence = all_actions[0, :self.exec_steps, :]
             action_sequence = all_actions[0, :, :]
-            
+
             # 7. Update action buffer
             with self.data_lock:
                 self.action_buffer = action_sequence.tolist()
@@ -389,23 +390,23 @@ class InferenceClient:
         #                 rot_x, rot_y, rot_z, gripper_prob]
         # Robot format: [dx, dy, dz, drx, dry, drz] (world frame)
         
-        if self.current_robot_state is not None:
-            # Convert using current robot state
-            self.current_action = self._convert_server_action_to_robot_action(
-                server_action, self.current_robot_state
-            )
-        else:
-            # No robot state available, use server action directly (without coordinate conversion)
-            # This is a simplified conversion - assumes world frame
-            self.current_action = np.array([
-                server_action[0],  # dx
-                server_action[1],  # dy
-                server_action[2],  # dz
-                server_action[3],  # drx
-                server_action[4],  # dry
-                server_action[5]   # drz
-            ])
-        
+        # if self.current_robot_state is not None:
+        #     # Convert using current robot state
+        #     self.current_action = self._convert_server_action_to_robot_action(
+        #         server_action, self.current_robot_state
+        #     )
+        # else:
+        #     # No robot state available, use server action directly (without coordinate conversion)
+        #     # This is a simplified conversion - assumes world frame
+        self.current_action = np.array([
+            server_action[0],  # dx
+            server_action[1],  # dy
+            server_action[2],  # dz
+            server_action[3],  # drx
+            server_action[4],  # dry
+            server_action[5]   # drz
+        ])
+    
         # Apply safety limits
         self.current_action = self._apply_action_limits(self.current_action)
         
@@ -415,6 +416,7 @@ class InferenceClient:
     
     def _convert_server_action_to_robot_action(self, server_action: List[float], 
                                               robot_state: np.ndarray) -> np.ndarray:
+        # 待检查
         """
         Convert server action format to robot action format.
         
@@ -661,3 +663,5 @@ if __name__ == "__main__":
     finally:
         client.cleanup()
         rospy.loginfo("InferenceClient test completed")
+
+

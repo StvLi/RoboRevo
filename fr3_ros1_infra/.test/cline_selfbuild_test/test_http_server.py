@@ -181,7 +181,7 @@ def read_from_file(dir_to_file, diff_postprocess = True):
                     return np.zeros((25, 7))
             else:
                 # 尝试其他常见名称
-                action_keys = ['actions', 'traj', 'trajectory', 'act', 'motion']
+                action_keys = ['actions', 'traj', 'trajectory', 'act', 'motion', 'states']
                 for key in action_keys:
                     if key in f:
                         actions = f[key][:]
@@ -228,7 +228,7 @@ def generate_action_sequence(sequence_name="read_from_file", file_path=None):
     elif sequence_name == "read_from_file":
         if file_path is None:
             # 使用默认文件路径
-            default_path = "/home/alan/桌面/UMI_replay_数据/正常/banana7.h5"
+            default_path = "/home/alan/桌面/UMI_replay_数据/正常/banana1.h5"
             print(f"[generate_action_sequence] 使用默认文件路径: {default_path}")
             actions = read_from_file(default_path)
         else:

@@ -12,7 +12,15 @@ import copy
 from scipy.spatial.transform import Rotation as R
 from geometry_msgs.msg import PoseStamped
 from franka_msgs.msg import FrankaState
+from time import sleep
 import tf
+
+# HOME_POSE 复位位姿
+HOME_POSE = {
+    'position': np.array([0.430, 0.0, 0.480]),
+    'orientation': R.from_quat([0.707, -0.707, 0.0, 0.0])
+}
+    
 
 class SimplifiedFrankaEnv:
     """
@@ -251,6 +259,12 @@ class SimplifiedFrankaEnv:
         Returns:
             observation: 初始观测值
         """
+        tmp_count = 5
+        while (tmp_count):
+            self._publish_pose(HOME_POSE)
+            tmp_count -= 1
+            sleep(1)
+
         try:
             # 检查数据是否可用
             if self.current_pose is None:
