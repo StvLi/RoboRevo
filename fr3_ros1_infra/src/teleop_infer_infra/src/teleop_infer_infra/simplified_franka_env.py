@@ -14,7 +14,8 @@ from geometry_msgs.msg import PoseStamped
 from franka_msgs.msg import FrankaState
 from time import sleep
 import tf
-
+import actionlib
+from franka_gripper.msg import MoveAction, MoveGoal, GraspAction, GraspGoal, GraspEpsilon
 # HOME_POSE 复位位姿
 HOME_POSE = {
     'position': np.array([0.430, 0.0, 0.480]),
@@ -43,7 +44,10 @@ class SimplifiedFrankaEnv:
         self.current_pose = None  # 字典: {'position': np.array, 'orientation': R}
         self.current_force = np.zeros(6)  # [Fx, Fy, Fz, Tx, Ty, Tz]
         self.target_pose = None  # 字典: {'position': np.array, 'orientation': R}
-        
+        ####
+        self.gripper_move_client = actionlib.SimpleActionClient('/franka_gripper/move', MoveAction)
+        self.gripper_grasp_client = actionlib.SimpleActionClient('/franka_gripper/grasp', GraspAction)
+        self.last_gripper_val = -1.0 # 记录上一次状态
         # 发布器 - 用于发布目标位姿到/cartesian_impedance_example_controller/equilibrium_pose
         self.pose_pub = rospy.Publisher(
             '/cartesian_impedance_example_controller/equilibrium_pose', 
@@ -112,7 +116,25 @@ class SimplifiedFrankaEnv:
             
         except Exception as e:
             rospy.logerr(f"处理状态消息时出错: {e}")
-    
+
+    def _apply_gripper_action(self, val):
+        """控制夹爪: val > 0.5 张开, val <= 0.5 闭合"""
+        # 防止频繁发送指令 (死区检测)
+        if abs(val - self.last_gripper_val) < 0.1:
+            return
+        
+        self.last_gripper_val = val
+        
+        if val > 0.5:
+            # 张开
+            goal = MoveGoal(width=0.08, speed=0.1)
+            self.gripper_move_client.send_goal(goal)
+        else:
+            goal = GraspGoal(width=0.0, speed=0.1, force=20.0)
+            goal.epsilon.inner = 0.08
+            goal.epsilon.outer = 0.08
+            self.gripper_grasp_client.send_goal(goal)
+
     def step(self, action=None, buttons=None):
         """
         Gym标准格式的step方法
@@ -129,12 +151,14 @@ class SimplifiedFrankaEnv:
             if self.current_pose is None:
                 rospy.logwarn("当前位姿数据不可用，跳过step")
                 return self._get_observation(), 0.0, False, {}
-            
+            arm_action = action[:6] if action is not None else None
             # 调用retarget函数更新target_pose
-            self.retarget(action, buttons)
+            self.retarget(arm_action, buttons)
             
             # 发布更新后的target_pose到equilibrium_pose
             self._publish_target_pose()
+            if action is not None and len(action) >= 7:
+                self._apply_gripper_action(action[6])
             
             # 返回Gym标准格式
             observation = self._get_observation()
