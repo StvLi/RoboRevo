@@ -1,0 +1,42 @@
+# Catkin工作空间构建目录
+build/
+devel/
+install/
+log/
+
+# 所有功能包下的构建目录（递归匹配）
+*/build/
+*/devel/
+*/install/
+*/log/
+
+# 更全面的递归匹配（支持多级嵌套）
+**/build/
+**/devel/
+**/install/
+**/log/
+
+# 特定IDE/编辑器文件
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# CMake构建文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+catkin_make.cache
+catkin_make_isolated.cache
+
+# 编译产物
+*.o
+*.a
+*.so
+*.pyc
+__pycache__/
+
+# 安装目录（如果使用了catkin_make install）
+_CPack_Packages/
