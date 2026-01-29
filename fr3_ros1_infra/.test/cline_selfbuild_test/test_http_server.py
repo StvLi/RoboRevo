@@ -57,12 +57,13 @@ ACTION_SEQUENCE = [
     'zero', 'zero', 'zero', 'zero', 'zero'                 # 回到原点
 ]
 
-def read_from_file(dir_to_file, diff_postprocess = True):
+def read_from_file(dir_to_file, diff_postprocess = False):
     """
-    从h5文件中读取动作轨迹
+    从文件中读取动作轨迹，支持.h5和.npy格式
     
     Args:
-        dir_to_file: h5文件路径
+        dir_to_file: 文件路径
+        diff_postprocess: 是否应用差分后处理
         
     Returns:
         numpy数组形状 (n, 7) 包含n个动作，每个动作7个维度
@@ -71,136 +72,173 @@ def read_from_file(dir_to_file, diff_postprocess = True):
     try:
         print(f"[read_from_file] 读取文件: {dir_to_file}")
         
-        with h5py.File(dir_to_file, 'r') as f:
-            # 检查文件中的数据集
-            if 'action' in f:
-                actions = f['action'][:]
-                # ipdb.set_trace()
-                print(f"[read_from_file] 找到action数据集，形状: {actions.shape}")
-                
-                # 检查动作维度
-                if len(actions.shape) == 2:
-                    # 如果动作有8个维度，取前7个
-                    if actions.shape[1] == 8:
-                        print(f"[read_from_file] 动作有8个维度，取前7个")
-                        actions = actions[:, :7]
-                    elif actions.shape[1] == 7:
-                        print(f"[read_from_file] 动作有7个维度，直接使用")
-                    else:
-                        print(f"[read_from_file] 警告: 动作维度为{actions.shape[1]}，期望7或8")
-                        # 如果维度不匹配，尝试取前7列
-                        if actions.shape[1] > 7:
-                            actions = actions[:, :7]
-                        else:
-                            # 如果维度不足，补零
-                            print(f"[read_from_file] 警告: 维度不足，补零到7维")
+        # 根据文件后缀选择读取方式
+        file_extension = os.path.splitext(dir_to_file)[1].lower()
+        
+        if file_extension == '.h5':
+            # 处理HDF5文件
+            with h5py.File(dir_to_file, 'r') as f:
+                # 检查文件中的数据集
+                if 'action' in f:
+                    actions = f['action'][:]
+                    # ipdb.set_trace()
+                    print(f"[read_from_file] 找到action数据集，形状: {actions.shape}")
+                    
+                    # 检查动作维度
+                    if len(actions.shape) == 2:
+                        # 如果动作有8个维度，取前7个
+                        if actions.shape[1] == 8:
+                            print(f"[read_from_file] 动作有8个维度，包含gripper")
                             new_actions = np.zeros((actions.shape[0], 7))
-                            new_actions[:, :actions.shape[1]] = actions
+                            new_actions[:, 0:3] = actions[:, 0:3]
+                            new_actions[:, 3:6] = R.from_quat(actions[:, 3:7]).as_rotvec()
+                            new_actions[:, 6] = actions[:, 7]
+                        elif actions.shape[1] == 7:
+                            print(f"[read_from_file] 动作有7个维度，直接使用")
+                            new_actions = np.zeros((actions.shape[0], 7))
+                            new_actions[:, 0:3] = actions[:, 0:3]
+                            new_actions[:, 3:6] = R.from_quat(actions[:, 3:7]).as_rotvec()
+                        else:
+                            print(f"[read_from_file] 警告: 动作维度为{actions.shape[1]}，期望7或8")
+                            # 如果维度不匹配，尝试取前7列
+                            if actions.shape[1] > 7:
+                                new_actions = np.zeros((actions.shape[0], 7))
+                                new_actions[:, 0:3] = actions[:, 0:3]
+                                new_actions[:, 3:6] = R.from_quat(actions[:, 3:7]).as_rotvec()
+                            else:
+                                # 如果维度不足，补零
+                                print(f"[read_from_file] 警告: 维度不足，动作全0")
+                                new_actions = np.zeros((actions.shape[0], 7))
+                                # new_actions[:, :actions.shape[1]] = actions
+                                # actions = new_actions
+
+                        # 如果设置差分后处理
+                        if diff_postprocess == True:
+                            print(f"[read_from_file] 应用差分后处理（4x4齐次变换矩阵逻辑）")
+                            # 使用4x4齐次变换矩阵计算差分
+                            # 第0步保持原样，第1步及以后计算相对变换
+                            new_actions = np.zeros([actions.shape[0],7])
+                            # new_actions[0, 0:3] = actions[0, 0:3]  # 第0步保持原样
+                            # new_actions[0, 3:6] = [R.from_quat(actions[0, 3:7]).as_rotvec()]
+                            # print('<<<FIRST FRAME>>>')
+                            # print(actions[0,0:3])
+                            # print(R.from_quat(actions[0,3:7]).as_matrix())
+                            # print(R.from_quat(
+                            #     [actions[0,4], actions[0,5], actions[0,6], actions[0,3]]
+                            #                   ).as_matrix())
+
+                            for i in range(1, actions.shape[0]):
+                                # 提取前一个动作的平移和旋转
+                                t_prev = actions[i-1, 0:3]  # 平移: [dx, dy, dz]
+                                q_prev = actions[i-1, 3:7]  # 四元数: [qx, qy, qz, qw]
+                                # q_prev = [actions[i-1, 4],actions[i-1, 5],actions[i-1, 6],actions[i-1, 3]]
+                                
+                                # 提取当前动作的平移和旋转
+                                t_curr = actions[i, 0:3]    # 平移: [dx, dy, dz]
+                                q_curr = actions[i, 3:7]    # 四元数: [qx, qy, qz, qw]
+                                # q_curr = [actions[i, 4],actions[i, 5],actions[i, 6],actions[i, 3]]
+                                
+                                # 创建旋转对象并获取3x3旋转矩阵
+                                R_prev_obj = R.from_quat(q_prev)
+                                R_curr_obj = R.from_quat(q_curr)
+                                R_prev = R_prev_obj.as_matrix()  # 3x3旋转矩阵
+                                R_curr = R_curr_obj.as_matrix()  # 3x3旋转矩阵
+                                
+                                # 构建4x4齐次变换矩阵 T_prev
+                                T_prev = np.eye(4)
+                                T_prev[0:3, 0:3] = R_prev
+                                T_prev[0:3, 3] = t_prev
+                                
+                                # 构建4x4齐次变换矩阵 T_curr
+                                T_curr = np.eye(4)
+                                T_curr[0:3, 0:3] = R_curr
+                                T_curr[0:3, 3] = t_curr
+                                
+                                # 计算相对变换：ΔT = T_prev^{-1} * T_curr
+                                T_prev_inv = np.linalg.inv(T_prev)
+                                T_delta = T_prev_inv @ T_curr
+                                
+                                # 从ΔT中提取相对平移和旋转
+                                t_rel = T_delta[0:3, 3]  # 相对平移
+                                R_delta = T_delta[0:3, 0:3]  # 相对旋转矩阵
+                                
+                                # 将旋转矩阵转换为轴角表示
+                                R_delta_obj = R.from_matrix(R_delta)
+                                rotvec = R_delta_obj.as_rotvec()
+                                
+                                # 将结果存储到新动作中
+                                new_actions[i, 0:3] = t_rel  # 相对平移
+                                new_actions[i, 3:6] = rotvec  # 相对旋转（轴角表示）
+                                new_actions[i, 6] = actions[i, 7]   # 夹爪状态
+
+                            #     new_actions[i, 0:3] = [0,0,0] # 调试不平移
+                            #     new_actions[i, 3:6] = [0,0,0] # 调试不旋转
+                            # new_actions[0, 0:3] = [0,0,0.1] # 调试不平移
+                            # new_actions[0, 3:6] = [0,0,0] # 调试不旋转
+
+                            # 将差分后的动作赋值回actions变量
+                            # ipdb.set_trace()
                             actions = new_actions
+                            print(f"[read_from_file] 差分后动作形状: {actions.shape}")
+                            print(f"[read_from_file] 差分后第一个动作: {actions[0]}")
+                            print(f"[read_from_file] 差分后第二个动作: {actions[1]} (相对变换)")
 
-                    # 如果设置差分后处理
-                    if diff_postprocess == True:
-                        print(f"[read_from_file] 应用差分后处理（4x4齐次变换矩阵逻辑）")
-                        # 使用4x4齐次变换矩阵计算差分
-                        # 第0步保持原样，第1步及以后计算相对变换
-                        new_actions = np.zeros([actions.shape[0],6])
-                        # new_actions[0, 0:3] = actions[0, 0:3]  # 第0步保持原样
-                        # new_actions[0, 3:6] = [R.from_quat(actions[0, 3:7]).as_rotvec()]
-                        # print('<<<FIRST FRAME>>>')
-                        # print(actions[0,0:3])
-                        # print(R.from_quat(actions[0,3:7]).as_matrix())
-                        # print(R.from_quat(
-                        #     [actions[0,4], actions[0,5], actions[0,6], actions[0,3]]
-                        #                   ).as_matrix())
-
-                        for i in range(1, actions.shape[0]):
-                            # 提取前一个动作的平移和旋转
-                            t_prev = actions[i-1, 0:3]  # 平移: [dx, dy, dz]
-                            q_prev = actions[i-1, 3:7]  # 四元数: [qx, qy, qz, qw]
-                            # q_prev = [actions[i-1, 4],actions[i-1, 5],actions[i-1, 6],actions[i-1, 3]]
-                            
-                            # 提取当前动作的平移和旋转
-                            t_curr = actions[i, 0:3]    # 平移: [dx, dy, dz]
-                            q_curr = actions[i, 3:7]    # 四元数: [qx, qy, qz, qw]
-                            # q_curr = [actions[i, 4],actions[i, 5],actions[i, 6],actions[i, 3]]
-                            
-                            # 创建旋转对象并获取3x3旋转矩阵
-                            R_prev_obj = R.from_quat(q_prev)
-                            R_curr_obj = R.from_quat(q_curr)
-                            R_prev = R_prev_obj.as_matrix()  # 3x3旋转矩阵
-                            R_curr = R_curr_obj.as_matrix()  # 3x3旋转矩阵
-                            
-                            # 构建4x4齐次变换矩阵 T_prev
-                            T_prev = np.eye(4)
-                            T_prev[0:3, 0:3] = R_prev
-                            T_prev[0:3, 3] = t_prev
-                            
-                            # 构建4x4齐次变换矩阵 T_curr
-                            T_curr = np.eye(4)
-                            T_curr[0:3, 0:3] = R_curr
-                            T_curr[0:3, 3] = t_curr
-                            
-                            # 计算相对变换：ΔT = T_prev^{-1} * T_curr
-                            T_prev_inv = np.linalg.inv(T_prev)
-                            T_delta = T_prev_inv @ T_curr
-                            
-                            # 从ΔT中提取相对平移和旋转
-                            t_rel = T_delta[0:3, 3]  # 相对平移
-                            R_delta = T_delta[0:3, 0:3]  # 相对旋转矩阵
-                            
-                            # 将旋转矩阵转换为轴角表示
-                            R_delta_obj = R.from_matrix(R_delta)
-                            rotvec = R_delta_obj.as_rotvec()
-                            
-                            # 将结果存储到新动作中
-                            new_actions[i, 0:3] = t_rel  # 相对平移
-                            new_actions[i, 3:6] = rotvec  # 相对旋转（轴角表示）
-                        #     new_actions[i, 0:3] = [0,0,0] # 调试不平移
-                        #     new_actions[i, 3:6] = [0,0,0] # 调试不旋转
-                        # new_actions[0, 0:3] = [0,0,0.1] # 调试不平移
-                        # new_actions[0, 3:6] = [0,0,0] # 调试不旋转
-
-                        # 将差分后的动作赋值回actions变量
-                        # ipdb.set_trace()
-                        actions = new_actions
-                        print(f"[read_from_file] 差分后动作形状: {actions.shape}")
-                        print(f"[read_from_file] 差分后第一个动作: {actions[0]}")
-                        print(f"[read_from_file] 差分后第二个动作: {actions[1]} (相对变换)")
-
-                    
-                    # 限制动作数量，避免返回太多动作
-                    max_actions = 1000  # 限制最大动作数
-                    if actions.shape[0] > max_actions:
-                        print(f"[read_from_file] 动作数量{actions.shape[0]}超过限制{max_actions}，取前{max_actions}个")
-                        actions = actions[:max_actions, :]
-                    
-                    print(f"[read_from_file] 返回动作形状: {actions.shape}")
-                    return actions
-                else:
-                    print(f"[read_from_file] 错误: action数据集形状不是2D: {actions.shape}")
-                    return np.zeros((25, 7))
-            else:
-                # 尝试其他常见名称
-                action_keys = ['actions', 'traj', 'trajectory', 'act', 'motion', 'states']
-                for key in action_keys:
-                    if key in f:
-                        actions = f[key][:]
-                        print(f"[read_from_file] 找到{key}数据集，形状: {actions.shape}")
                         
-                        # 处理动作数据
-                        if len(actions.shape) == 2 and actions.shape[1] >= 7:
-                            actions = actions[:, :7]
-                            # 限制动作数量
-                            max_actions = 1000
-                            if actions.shape[0] > max_actions:
-                                actions = actions[:max_actions, :]
-                            print(f"[read_from_file] 返回动作形状: {actions.shape}")
-                            return actions
-                
-                print(f"[read_from_file] 错误: 文件中未找到动作数据集")
-                print(f"[read_from_file] 可用键: {list(f.keys())}")
+                        # 限制动作数量，避免返回太多动作
+                        max_actions = 1000  # 限制最大动作数
+                        if actions.shape[0] > max_actions:
+                            print(f"[read_from_file] 动作数量{actions.shape[0]}超过限制{max_actions}，取前{max_actions}个")
+                            actions = actions[:max_actions, :]
+                        
+                        print(f"[read_from_file] 返回动作形状: {actions.shape}")
+                        return actions
+                    else:
+                        print(f"[read_from_file] 错误: action数据集形状不是2D: {actions.shape}")
+                        return np.zeros((25, 7))
+                else:
+                    # 尝试其他常见名称
+                    action_keys = ['actions', 'traj', 'trajectory', 'act', 'motion', 'states']
+                    for key in action_keys:
+                        if key in f:
+                            actions = f[key][:]
+                            print(f"[read_from_file] 找到{key}数据集，形状: {actions.shape}")
+                            
+                            # 处理动作数据
+                            if len(actions.shape) == 2 and actions.shape[1] >= 7:
+                                actions = actions[:, :7]
+                                # 限制动作数量
+                                max_actions = 1000
+                                if actions.shape[0] > max_actions:
+                                    actions = actions[:max_actions, :]
+                                print(f"[read_from_file] 返回动作形状: {actions.shape}")
+                                return actions
+                    
+                    print(f"[read_from_file] 错误: 文件中未找到动作数据集")
+                    print(f"[read_from_file] 可用键: {list(f.keys())}")
+                    return np.zeros((25, 7))
+                    
+        elif file_extension == '.npy':
+            # 处理NumPy文件
+            actions = np.load(dir_to_file)
+            print(f"[read_from_file] 加载.npy文件，形状: {actions.shape}")
+            
+            # 处理动作数据
+            if len(actions.shape) == 2 and actions.shape[1] >= 7:
+                actions = actions[:, :7]
+                # 限制动作数量
+                max_actions = 1000
+                if actions.shape[0] > max_actions:
+                    actions = actions[:max_actions, :]
+                print(f"[read_from_file] 返回动作形状: {actions.shape}")
+                return actions
+            else:
+                print(f"[read_from_file] 错误: .npy文件动作数据格式不正确")
                 return np.zeros((25, 7))
                 
+        else:
+            print(f"[read_from_file] 错误: 不支持的文件格式 {file_extension}")
+            return np.zeros((25, 7))
+            
     except Exception as e:
         print(f"[read_from_file] 读取文件错误: {e}")
         import traceback
@@ -228,7 +266,9 @@ def generate_action_sequence(sequence_name="read_from_file", file_path=None):
     elif sequence_name == "read_from_file":
         if file_path is None:
             # 使用默认文件路径
-            default_path = "/home/alan/桌面/UMI_replay_数据/正常/banana1.h5"
+            # default_path = "/home/alan/桌面/UMI_replay_数据/正常/banana1.h5"
+            default_path = "/home/alan/下载/20260119164604_vio_delta_actions.npy"
+            # default_path = "/home/alan/下载/20260119164604_vio.h5"
             print(f"[generate_action_sequence] 使用默认文件路径: {default_path}")
             actions = read_from_file(default_path)
         else:
