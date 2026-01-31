@@ -1,0 +1,3 @@
+[submodule "fr3_ros1_infra/src/franka_ros"]
+	path = fr3_ros1_infra/src/franka_ros
+	url = https://github.com/frankarobotics/franka_ros.git

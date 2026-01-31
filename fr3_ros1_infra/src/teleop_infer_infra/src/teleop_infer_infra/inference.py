@@ -300,16 +300,37 @@ class InferenceClient:
             # 3. Prepare request payload
             # Note: state is set to None as in reference implementation
             # Server will fill with zeros if state is None
+            if self.image_sources:
+                images_np = self.image_sources()
+            else:
+                images_np = []
+
+            if not images_np or len(images_np) == 0:
+                rospy.logwarn("No images available")
+                # 可以选择 return 或继续使用空图，这里建议直接 return
+                return
+            images_b64 = [self._encode_image_to_base64(img) for img in images_np]
+            
+            # 3. Prepare request payload
             payload = {
                 "examples": [
                     {
-                        # "image": images_b64,
-                        "image": None,
-                        "lang": "Perform the task",  # Default instruction
-                        "state": None  # Server will fill with zeros
+                        "image": images_b64, 
+                        "lang": "Perform the task", 
+                        "state": None 
                     }
                 ]
             }
+            # payload = {
+            #     "examples": [
+            #         {
+            #             # "image": images_b64,
+            #             "image": None,
+            #             "lang": "Perform the task",  # Default instruction
+            #             "state": None  # Server will fill with zeros
+            #         }
+            #     ]
+            # }
             
             # 4. Send request to server (synchronous)
             resp = self.session.post(self.model_url, json=payload, timeout=30.0)
@@ -398,14 +419,29 @@ class InferenceClient:
         # else:
         #     # No robot state available, use server action directly (without coordinate conversion)
         #     # This is a simplified conversion - assumes world frame
+
+        ######
+        gripper_val = 0.0
+        if len(server_action) >= 7:
+            gripper_val = server_action[6]
         self.current_action = np.array([
             server_action[0],  # dx
             server_action[1],  # dy
             server_action[2],  # dz
             server_action[3],  # drx
             server_action[4],  # dry
-            server_action[5]   # drz
+            server_action[5],  # drz
+            gripper_val      
         ])
+        #######
+        # self.current_action = np.array([
+        #     server_action[0],  # dx
+        #     server_action[1],  # dy
+        #     server_action[2],  # dz
+        #     server_action[3],  # drx
+        #     server_action[4],  # dry
+        #     server_action[5]   # drz
+        # ])
     
         # Apply safety limits
         self.current_action = self._apply_action_limits(self.current_action)
@@ -663,5 +699,6 @@ if __name__ == "__main__":
     finally:
         client.cleanup()
         rospy.loginfo("InferenceClient test completed")
+
 
 
