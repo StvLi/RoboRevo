@@ -400,28 +400,42 @@ class SimplifiedFrankaEnv:
         获取当前观测值
         
         Returns:
-            np.array: 观测向量，包含位置、姿态和力信息
+            dict: 观测字典，包含末端执行器位置、姿态和力信息
         """
         try:
             if self.current_pose is None:
-                # 如果数据不可用，返回零向量
-                return np.zeros(13)  # 3位置 + 4四元数 + 6力
+                # 如果数据不可用，返回零值字典
+                return {
+                    'ee': {
+                        'position': np.zeros(3),
+                        'orientation': np.zeros(3),  # 轴角形式
+                        'wrench': np.zeros(6)
+                    }
+                }
             
-            # 从scipy Rotation获取四元数
-            quaternion = self.current_pose['orientation'].as_quat()  # [x, y, z, w]
+            # 从scipy Rotation获取轴角表示
+            rotvec = self.current_pose['orientation'].as_rotvec()  # 轴角形式 [rx, ry, rz]
             
-            # 构建观测向量: [位置(3), 四元数(4), 力(6)]
-            observation = np.concatenate([
-                self.current_pose['position'],  # 3维
-                quaternion,                     # 4维
-                self.current_force              # 6维
-            ])
+            # 构建观测字典
+            observation = {
+                'ee': {
+                    'position': self.current_pose['position'].copy(),  # 3维位置
+                    'orientation': rotvec.copy(),                      # 3维轴角
+                    'wrench': self.current_force.copy()                # 6维力/力矩
+                }
+            }
             
             return observation
             
         except Exception as e:
             rospy.logerr(f"获取观测值时出错: {e}")
-            return np.zeros(13)
+            return {
+                'ee': {
+                    'position': np.zeros(3),
+                    'orientation': np.zeros(3),  # 轴角形式
+                    'wrench': np.zeros(6)
+                }
+            }
     
     def get_current_pose(self):
         """
