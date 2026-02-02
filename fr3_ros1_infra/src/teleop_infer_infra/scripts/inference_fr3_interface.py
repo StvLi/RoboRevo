@@ -8,10 +8,14 @@ import rospy
 import numpy as np
 import sys
 import os
-
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
+import threading
+import copy
 # 获取工作空间根目录路径
 workspace_root = os.path.join(os.path.dirname(__file__), '../../..')
-
+import message_filters
 # 添加包路径
 # 1. 添加teleop_infer_infra包路径
 sys.path.append(os.path.join(workspace_root, 'src/teleop_infer_infra/src'))
@@ -47,8 +51,21 @@ class InferenceFR3Interface:
         
         # 设置时钟回调频率 (10Hz)
         self.rate = rospy.Rate(30)  # 10Hz
-        
-        # 设置图像源（模拟）
+        self.bridge = CvBridge()
+        self.latest_images = None
+        self.img_lock = threading.Lock()
+        mid_topic = '/camera/color/image_raw'
+        left_topic = '/camera_1/color/image_raw'
+        right_topic = '/camera_2/color/image_raw'
+        rospy.loginfo(f"订阅相机: 中={mid_topic}, 左={left_topic}, 右={right_topic}")
+        sub_mid = message_filters.Subscriber(mid_topic, Image)
+        sub_left = message_filters.Subscriber(left_topic, Image)
+        sub_right = message_filters.Subscriber(right_topic, Image)
+        self.ts = message_filters.ApproximateTimeSynchronizer(
+            [sub_mid, sub_left, sub_right], 10, 0.1
+        )
+        self.ts.registerCallback(self.image_callback)
+        # 设置图像源
         self._setup_image_source()
         
         # 设置初始机器人状态
@@ -58,19 +75,51 @@ class InferenceFR3Interface:
         rospy.loginfo(f"Agent: InferenceClient (mock={use_mock}), Env: SimplifiedFrankaEnv")
         rospy.loginfo("环境已重置，准备开始交互")
 
-    def _setup_image_source(self):
-        """设置图像源函数（模拟）"""
-        def mock_image_source():
-            """模拟图像源返回三个随机图像"""
-            height, width = self.agent.img_height, self.agent.img_width
-            return [
-                np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机1
-                np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机2
-                np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机3
-            ]
+    def image_callback(self, msg_mid, msg_left, msg_right):
+        try:
+            # 1. 转换图像
+            cv_mid = self.bridge.imgmsg_to_cv2(msg_mid, "rgb8")
+            cv_left = self.bridge.imgmsg_to_cv2(msg_left, "rgb8")
+            cv_right = self.bridge.imgmsg_to_cv2(msg_right, "rgb8")
+            
+            # 2. (可选) 可以在这里做 resize，例如缩放到 640x480
+            # cv_mid = cv2.resize(cv_mid, (640, 480)) ...
+            
+            with self.img_lock:
+                # 3. 按顺序存入列表: [中, 左, 右] 
+                self.latest_images = [cv_mid, cv_left, cv_right]
+                
+        except Exception as e:
+            rospy.logerr_throttle(1, f"图像处理出错: {e}")
+            self.latest_images = None
+    # def _setup_image_source(self):
+    #     """设置图像源函数（模拟）"""
+    #     def mock_image_source():
+    #         """模拟图像源返回三个随机图像"""
+    #         height, width = self.agent.img_height, self.agent.img_width
+    #         return [
+    #             np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机1
+    #             np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机2
+    #             np.random.randint(0, 255, (height, width, 3), dtype=np.uint8),  # 相机3
+    #         ]
         
-        self.agent.set_image_sources(mock_image_source)
-        rospy.logdebug("图像源函数已设置（模拟模式）")
+    #     self.agent.set_image_sources(mock_image_source)
+    #     rospy.logdebug("图像源函数已设置（模拟模式）")
+    def _setup_image_source(self):
+        def real_image_source():
+            with self.img_lock:
+                # 如果还没有收到图像，返回 3 张黑图占位
+                if not self.latest_images:
+                    black_img = np.zeros((480, 640, 3), dtype=np.uint8)
+                    rospy.loginfo("self.latest_images未更新 等待相机图像...")
+                    return [black_img, black_img, black_img]
+                
+                # 返回深拷贝的图像列表
+                return copy.deepcopy(self.latest_images)
+        
+        # 注入给 agent
+        self.agent.set_image_sources(real_image_source)
+        rospy.loginfo("多相机图像源已设置 (中-左-右)")
 
     def _setup_robot_state(self):
         """设置初始机器人状态"""
@@ -84,6 +133,7 @@ class InferenceFR3Interface:
         try:
             # 使用当前观测值获取agent的动作
             # InferenceClient的get_action()返回(action, buttons)，其中buttons[1]在execution状态时为True
+            # TODO: 
             action, buttons = self.agent.get_action(self.obs)
             
             # 记录FSM状态和按钮状态
@@ -103,7 +153,7 @@ class InferenceFR3Interface:
             self.step_count += 1
             
             # 调试输出 - 单行更新显示最新一步
-            if self.step_count % 5000 == 0:  # 每5000步更新一次显示，避免刷屏
+            if self.step_count % 10 == 0:  # 每5000步更新一次显示，避免刷屏
                 rospy.loginfo(f"Step {self.step_count}: "
                              f"动作范数={np.linalg.norm(action):.4f}, "
                              f"按钮={buttons}, 奖励={reward:.4f}, 完成={done}")

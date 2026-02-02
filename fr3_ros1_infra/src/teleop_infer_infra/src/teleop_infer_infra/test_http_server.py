@@ -188,7 +188,7 @@ def info():
         }
     })
 
-def run_server(host='127.0.0.1', port=5004):
+def run_server(host='127.0.0.1', port=5003):
     """
     启动HTTP测试服务器
     
@@ -226,7 +226,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='HTTP测试服务器')
     parser.add_argument('--host', default='127.0.0.1', help='服务器地址')
-    parser.add_argument('--port', type=int, default=5004, help='服务器端口')
+    parser.add_argument('--port', type=int, default=5003, help='服务器端口')
     
     args = parser.parse_args()
     

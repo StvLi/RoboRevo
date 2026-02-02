@@ -14,8 +14,10 @@ from geometry_msgs.msg import PoseStamped
 from franka_msgs.msg import FrankaState
 from time import sleep
 import tf
-
+import actionlib
+from franka_gripper.msg import MoveAction, MoveGoal, GraspAction, GraspGoal, GraspEpsilon
 # HOME_POSE 复位位姿
+from std_msgs.msg import Float32
 HOME_POSE = {
     'position': np.array([0.430, 0.0, 0.480]),
     'orientation': R.from_quat([0.707, -0.707, 0.0, 0.0])
@@ -43,7 +45,9 @@ class SimplifiedFrankaEnv:
         self.current_pose = None  # 字典: {'position': np.array, 'orientation': R}
         self.current_force = np.zeros(6)  # [Fx, Fy, Fz, Tx, Ty, Tz]
         self.target_pose = None  # 字典: {'position': np.array, 'orientation': R}
-        
+        ####
+        self.gripper_pub = rospy.Publisher('/target_distance', Float32, queue_size=1)
+        self.last_gripper_val = -1.0 # 记录上一次状态
         # 发布器 - 用于发布目标位姿到/cartesian_impedance_example_controller/equilibrium_pose
         self.pose_pub = rospy.Publisher(
             '/cartesian_impedance_example_controller/equilibrium_pose', 
@@ -112,7 +116,36 @@ class SimplifiedFrankaEnv:
             
         except Exception as e:
             rospy.logerr(f"处理状态消息时出错: {e}")
-    
+
+    def _apply_gripper_action(self, val):
+        """
+        控制夹爪: val > 0.5 张开, val <= 0.5 闭合
+        Topic: /target_distance (Float32)
+        Unit: Meters
+        """
+        # 1. 过滤抖动 (如果数值变化不大就不发指令)
+        if abs(val - self.last_gripper_val) < 0.1:
+            return
+        
+        self.last_gripper_val = val
+        
+        # 2. 准备消息
+        msg = Float32()
+        
+        # 3. 设定目标宽度 (根据你的机器人实际情况调整)
+        if val > 0.05:
+            # 张开 (Open) -> 设置为最大宽度 0.08米 (8cm)
+            msg.data = 0.08
+            if self.debug: rospy.loginfo(f"夹爪动作: 张开 (0.08m)")
+        else:
+            # 闭合 (Close) -> 设置为 0.0米
+            msg.data = 0.0
+            if self.debug: rospy.loginfo(f"夹爪动作: 闭合 (0.0m)")
+            
+        # 4. 发布指令
+        rospy.loginfo(f"发布指令: {msg.data}")
+        self.gripper_pub.publish(msg)
+
     def step(self, action=None, buttons=None):
         """
         Gym标准格式的step方法
@@ -129,12 +162,14 @@ class SimplifiedFrankaEnv:
             if self.current_pose is None:
                 rospy.logwarn("当前位姿数据不可用，跳过step")
                 return self._get_observation(), 0.0, False, {}
-            
+            arm_action = action[:6] if action is not None else None
             # 调用retarget函数更新target_pose
-            self.retarget(action, buttons)
+            self.retarget(arm_action, buttons)
             
             # 发布更新后的target_pose到equilibrium_pose
             self._publish_target_pose()
+            if action is not None and len(action) >= 7:
+                self._apply_gripper_action(action[6])
             
             # 返回Gym标准格式
             observation = self._get_observation()
@@ -261,9 +296,20 @@ class SimplifiedFrankaEnv:
         """
         tmp_count = 5
         while (tmp_count):
+            # 机械臂回初始位置
             self._publish_pose(HOME_POSE)
-            tmp_count -= 1
             sleep(1)
+            tmp_count -= 1
+            
+        tmp_count = 5
+        while (tmp_count):
+            # 夹爪开合测试
+            self._apply_gripper_action(1.0)
+            sleep(0.5)
+            self._apply_gripper_action(0.0)
+            sleep(0.5)
+            tmp_count -= 1
+            
 
         try:
             # 检查数据是否可用
