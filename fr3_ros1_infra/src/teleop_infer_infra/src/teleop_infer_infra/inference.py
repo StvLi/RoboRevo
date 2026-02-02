@@ -429,10 +429,14 @@ class InferenceClient:
         ######
         gripper_val = 0.0
         if len(server_action) >= 7:
+<<<<<<< HEAD
             # 给加爪赋值
             gripper_val = server_action[6]
             rospy.loginfo(f"Gripper value: {server_action[6]}")
 
+=======
+            gripper_val = server_action[6]
+>>>>>>> d58ebb349109e7e1e83133507ecb88dc6972e3a4
         self.current_action = np.array([
             server_action[0],  # dx
             server_action[1],  # dy

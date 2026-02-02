@@ -46,7 +46,12 @@ class SimplifiedFrankaEnv:
         self.current_force = np.zeros(6)  # [Fx, Fy, Fz, Tx, Ty, Tz]
         self.target_pose = None  # 字典: {'position': np.array, 'orientation': R}
         ####
+<<<<<<< HEAD
         self.gripper_pub = rospy.Publisher('/target_distance', Float32, queue_size=1)
+=======
+        self.gripper_move_client = actionlib.SimpleActionClient('/franka_gripper/move', MoveAction)
+        self.gripper_grasp_client = actionlib.SimpleActionClient('/franka_gripper/grasp', GraspAction)
+>>>>>>> d58ebb349109e7e1e83133507ecb88dc6972e3a4
         self.last_gripper_val = -1.0 # 记录上一次状态
         # 发布器 - 用于发布目标位姿到/cartesian_impedance_example_controller/equilibrium_pose
         self.pose_pub = rospy.Publisher(
@@ -118,17 +123,23 @@ class SimplifiedFrankaEnv:
             rospy.logerr(f"处理状态消息时出错: {e}")
 
     def _apply_gripper_action(self, val):
+<<<<<<< HEAD
         """
         控制夹爪: val > 0.5 张开, val <= 0.5 闭合
         Topic: /target_distance (Float32)
         Unit: Meters
         """
         # 1. 过滤抖动 (如果数值变化不大就不发指令)
+=======
+        """控制夹爪: val > 0.5 张开, val <= 0.5 闭合"""
+        # 防止频繁发送指令 (死区检测)
+>>>>>>> d58ebb349109e7e1e83133507ecb88dc6972e3a4
         if abs(val - self.last_gripper_val) < 0.1:
             return
         
         self.last_gripper_val = val
         
+<<<<<<< HEAD
         # 2. 准备消息
         msg = Float32()
         
@@ -145,6 +156,17 @@ class SimplifiedFrankaEnv:
         # 4. 发布指令
         rospy.loginfo(f"发布指令: {msg.data}")
         self.gripper_pub.publish(msg)
+=======
+        if val > 0.5:
+            # 张开
+            goal = MoveGoal(width=0.08, speed=0.1)
+            self.gripper_move_client.send_goal(goal)
+        else:
+            goal = GraspGoal(width=0.0, speed=0.1, force=20.0)
+            goal.epsilon.inner = 0.08
+            goal.epsilon.outer = 0.08
+            self.gripper_grasp_client.send_goal(goal)
+>>>>>>> d58ebb349109e7e1e83133507ecb88dc6972e3a4
 
     def step(self, action=None, buttons=None):
         """
