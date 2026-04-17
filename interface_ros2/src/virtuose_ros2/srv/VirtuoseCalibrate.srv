@@ -1,0 +1,7 @@
+string ip_address
+bool automatic
+---
+bool success
+bool already_calibrated
+bool hardware_down
+bool timeout

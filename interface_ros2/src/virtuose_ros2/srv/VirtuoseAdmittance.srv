@@ -1,0 +1,16 @@
+string ip_address
+uint8 indexing_mode
+float32 speed_factor
+float32 force_factor
+float32 max_force
+float32 max_torque
+bool power_enable
+float32 ktrans
+float32 btrans
+float32 krot
+float32 brot
+geometry_msgs/Transform base_frame
+---
+uint32 client_id
+bool success
+bool error

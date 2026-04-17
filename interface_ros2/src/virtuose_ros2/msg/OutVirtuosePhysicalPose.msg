@@ -1,0 +1,2 @@
+std_msgs/Header header
+geometry_msgs/Transform virtuose_physical_pose
